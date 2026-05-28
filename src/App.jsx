@@ -250,24 +250,26 @@ export default function SeitanSensei() {
     if (!searchQ.trim()) return flash("Scrivi il nome del prodotto");
     setSearchWait(true); setSearchItems(null);
     try {
-      const res = await fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms="+encodeURIComponent(searchQ.trim())+"&json=1&page_size=6&fields=product_name,brands,nutriments,serving_size,image_url");
+      const url = "https://world.openfoodfacts.org/cgi/search.pl?search_terms="+encodeURIComponent(searchQ.trim())+"&search_simple=1&action=process&json=1&page_size=10&sort_by=popularity_key";
+      const res = await fetch(url);
       const j = await res.json();
-      const products = (j.products || []).filter(p => p.nutriments && p.nutriments["energy-kcal_100g"]).map(p => ({
-        name: (p.product_name || "Sconosciuto") + (p.brands ? " ("+p.brands+")" : ""),
-        source: "OpenFoodFacts",
-        serving: p.serving_size || null,
-        per100: {
-          kcal: Math.round(p.nutriments["energy-kcal_100g"] || 0),
-          protein: Math.round((p.nutriments.proteins_100g || 0) * 10) / 10,
-          fat: Math.round((p.nutriments.fat_100g || 0) * 10) / 10,
-          carbs: Math.round((p.nutriments.carbohydrates_100g || 0) * 10) / 10
-        },
-        grams: 100,
-        kcal: Math.round(p.nutriments["energy-kcal_100g"] || 0),
-        protein: Math.round((p.nutriments.proteins_100g || 0) * 10) / 10,
-        fat: Math.round((p.nutriments.fat_100g || 0) * 10) / 10,
-        carbs: Math.round((p.nutriments.carbohydrates_100g || 0) * 10) / 10
-      }));
+      const products = (j.products || []).filter(p => {
+        if (!p.nutriments) return false;
+        const kcal = p.nutriments["energy-kcal_100g"] || p.nutriments["energy_100g"] || 0;
+        return kcal > 0;
+      }).slice(0, 6).map(p => {
+        const kcal = Math.round(p.nutriments["energy-kcal_100g"] || (p.nutriments["energy_100g"] ? p.nutriments["energy_100g"] / 4.184 : 0) || 0);
+        const prot = Math.round((p.nutriments.proteins_100g || 0) * 10) / 10;
+        const fat = Math.round((p.nutriments.fat_100g || 0) * 10) / 10;
+        const carb = Math.round((p.nutriments.carbohydrates_100g || 0) * 10) / 10;
+        return {
+          name: (p.product_name || "Prodotto") + (p.brands ? " ("+p.brands+")" : ""),
+          source: "OpenFoodFacts",
+          serving: p.serving_size || null,
+          per100: { kcal, protein: prot, fat, carbs: carb },
+          grams: 100, kcal, protein: prot, fat, carbs: carb
+        };
+      });
       setSearchItems(products.length > 0 ? products : []);
       if (products.length === 0) flash("Nessun prodotto trovato");
     } catch(err) {
