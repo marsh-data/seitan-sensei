@@ -1,38 +1,31 @@
 # 🥋 SEITAN SENSEI
 
 App di tracking nutrizionale per ricomposizione corporea vegetariana.
+Nessuna API key richiesta. Database nutrizionale: OpenFoodFacts (gratuito).
 
-## Deploy su Vercel (5 minuti)
+## Deploy su Vercel (3 minuti)
 
-### 1. Crea un repo GitHub
-- Vai su github.com → New Repository → nome: `seitan-sensei`
-- Carica tutti questi file nel repo
+### 1. GitHub
+- Crea repo su github.com (nome: seitan-sensei, Public)
+- Carica tutti questi file (non lo ZIP, i file estratti)
 
-### 2. Collega a Vercel
+### 2. Vercel
 - Vai su vercel.com → Sign up con GitHub
-- Clicca "Add New Project" → importa il repo `seitan-sensei`
-- Framework: Vite
-- Clicca "Deploy"
+- Add New Project → importa seitan-sensei
+- Framework: Vite → Deploy
 
-### 3. Aggiungi la API key
-- Nel progetto Vercel → Settings → Environment Variables
-- Aggiungi: `ANTHROPIC_API_KEY` = la tua chiave API Anthropic
-- Rideploya il progetto (Deployments → Redeploy)
-
-### 4. Condividi
-- Il link sara tipo: `seitan-sensei.vercel.app`
-- Mandalo ai tuoi amici
-- Ogni persona ha i suoi dati salvati nel proprio telefono (localStorage)
+### 3. Condividi
+- Link tipo: seitan-sensei.vercel.app
+- Ogni persona ha i suoi dati nel proprio telefono
 
 ## Funzionalita
 - Tracking pasti manuale
-- Foto etichetta + quantita → calcolo automatico AI
-- Ricerca valori nutrizionali online → con fonte e calcolo
+- Ricerca prodotti su OpenFoodFacts (gratis, no API key)
+- Inserisci grammi → calcolo automatico macro
+- Modifica valori prima di confermare
 - Tracking peso con grafico
 - Backup JSON scaricabile
 - Target personalizzati (BMR/TDEE/macro)
 
 ## Costi
-- Vercel: gratis (hobby plan)
-- Anthropic API: ~0.01-0.03€ per ogni ricerca/foto analizzata
-- Per 3 persone con uso normale: pochi euro al mese
+Zero. Tutto gratis.

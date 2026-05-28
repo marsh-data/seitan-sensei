@@ -247,34 +247,43 @@ export default function SeitanSensei() {
   };
 
   const doSearch = async () => {
-    if (!searchQ.trim()) return flash("Scrivi cosa e quanto");
+    if (!searchQ.trim()) return flash("Scrivi il nome del prodotto");
     setSearchWait(true); setSearchItems(null);
     try {
-      const res = await fetch("/api/anthropic", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
-          tools: [{type: "web_search_20250305", name: "web_search"}],
-          messages: [{role: "user", content: "Cerca online i valori nutrizionali per: "+searchQ.trim()+"\n\nTrova i valori per 100g dalla fonte piu affidabile, poi calcola il totale per la quantita specificata. Se la quantita e' in pezzi (es. 10 fette), cerca il peso medio per pezzo.\n\nRispondi SOLO con JSON valido senza altro testo:\n{\"items\":[{\"name\":\"nome alimento\",\"source\":\"nome sito web fonte\",\"per100\":{\"kcal\":0,\"protein\":0,\"fat\":0,\"carbs\":0},\"piece_weight_g\":peso_singolo_pezzo_o_null,\"qty_desc\":\"descrizione quantita es: 10 fette x 25g = 250g\",\"grams\":grammi_totali_consumati,\"kcal\":calorie_totali,\"protein\":proteine_totali_g,\"fat\":grassi_totali_g,\"carbs\":carboidrati_totali_g}]}"}]
-        })
-      });
+      const res = await fetch("https://world.openfoodfacts.org/cgi/search.pl?search_terms="+encodeURIComponent(searchQ.trim())+"&json=1&page_size=6&fields=product_name,brands,nutriments,serving_size,image_url");
       const j = await res.json();
-      const txt = (j.content || []).map(c => c.text || "").join("");
-      const jsonMatch = txt.match(/\{[\s\S]*"items"[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        setSearchItems(parsed.items || []);
-      } else {
-        setSearchItems([]);
-        flash("Non ho trovato i valori");
-      }
+      const products = (j.products || []).filter(p => p.nutriments && p.nutriments["energy-kcal_100g"]).map(p => ({
+        name: (p.product_name || "Sconosciuto") + (p.brands ? " ("+p.brands+")" : ""),
+        source: "OpenFoodFacts",
+        serving: p.serving_size || null,
+        per100: {
+          kcal: Math.round(p.nutriments["energy-kcal_100g"] || 0),
+          protein: Math.round((p.nutriments.proteins_100g || 0) * 10) / 10,
+          fat: Math.round((p.nutriments.fat_100g || 0) * 10) / 10,
+          carbs: Math.round((p.nutriments.carbohydrates_100g || 0) * 10) / 10
+        },
+        grams: 100,
+        kcal: Math.round(p.nutriments["energy-kcal_100g"] || 0),
+        protein: Math.round((p.nutriments.proteins_100g || 0) * 10) / 10,
+        fat: Math.round((p.nutriments.fat_100g || 0) * 10) / 10,
+        carbs: Math.round((p.nutriments.carbohydrates_100g || 0) * 10) / 10
+      }));
+      setSearchItems(products.length > 0 ? products : []);
+      if (products.length === 0) flash("Nessun prodotto trovato");
     } catch(err) {
       console.error(err);
       setSearchItems([]);
       flash("Errore nella ricerca");
     }
     setSearchWait(false);
+  };
+
+  const updateSearchGrams = (idx, newGrams) => {
+    const c = [...searchItems];
+    const g = parseFloat(newGrams) || 0;
+    const p = c[idx].per100;
+    c[idx] = {...c[idx], grams: g, kcal: Math.round(p.kcal * g / 100), protein: Math.round(p.protein * g / 100 * 10) / 10, fat: Math.round(p.fat * g / 100 * 10) / 10, carbs: Math.round(p.carbs * g / 100 * 10) / 10};
+    setSearchItems(c);
   };
 
   const confirmSearch = () => {
@@ -432,9 +441,7 @@ export default function SeitanSensei() {
             {/* Buttons */}
             <div style={{display:"flex", gap:8, marginBottom:10}}>
               <button style={bg} onClick={() => setAdding(true)}>+ Pasto</button>
-              <button style={{...bo, padding:"11px 16px"}} onClick={() => fileRef.current && fileRef.current.click()}>📸</button>
               <button style={{...bo, padding:"11px 16px"}} onClick={() => {setSearchOn(true); setSearchItems(null); setSearchQ("");}}>🔍</button>
-              <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={pickPhoto} />
             </div>
 
             {/* Add meal form */}
@@ -505,93 +512,88 @@ export default function SeitanSensei() {
             {/* Search panel */}
             {searchOn && (
               <div style={{...bx, border:"1px solid rgba(245,158,11,0.2)"}}>
-                <div style={lb}>🔍 CERCA VALORI ONLINE</div>
+                <div style={lb}>🔍 CERCA PRODOTTO</div>
 
-                {!searchWait && !searchItems && (
+                {/* Search input - always visible when no results */}
+                {!searchWait && (!searchItems || searchItems.length === 0) && (
                   <div>
-                    <div style={{fontSize:11, color:K.mut, marginBottom:6}}>Scrivi cosa e quanto hai mangiato:</div>
-                    <input style={{...ip, marginBottom:8}} placeholder="es. 10 fette pancarr&#232;, 80g pasta..."
+                    <div style={{fontSize:11, color:K.mut, marginBottom:6}}>Nome del prodotto:</div>
+                    <input style={{...ip, marginBottom:8}} placeholder="es. pancarr&#232;, tofu, lenticchie..."
                       value={searchQ} onChange={e => setSearchQ(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && doSearch()} />
                     <div style={{display:"flex", gap:6}}>
                       <button style={{...bg, background:K.a}} onClick={doSearch}>Cerca</button>
                       <button style={bo} onClick={() => setSearchOn(false)}>Annulla</button>
                     </div>
+                    {searchItems !== null && searchItems.length === 0 && (
+                      <div style={{color:K.mut, fontSize:12, marginTop:8}}>Nessun prodotto trovato. Prova un altro nome.</div>
+                    )}
                   </div>
                 )}
 
-                {searchWait && <div style={{textAlign:"center", padding:16, color:K.mut, fontSize:13}}>Cerco valori nutrizionali online...</div>}
+                {searchWait && <div style={{textAlign:"center", padding:16, color:K.mut, fontSize:13}}>Cerco su OpenFoodFacts...</div>}
 
-                {!searchWait && searchItems !== null && (
-                  searchItems.length > 0 ? (
-                    <div>
-                      <div style={{fontSize:11, color:K.mut, marginBottom:8}}>Trovato per: <b style={{color:K.txt}}>{searchQ}</b></div>
-                      {searchItems.map((it, i) => (
-                        <div key={i} style={{padding:"8px 0", borderBottom:"1px solid "+K.brd}}>
+                {/* Results */}
+                {!searchWait && searchItems !== null && searchItems.length > 0 && (
+                  <div>
+                    <div style={{fontSize:11, color:K.mut, marginBottom:4}}>Risultati per: <b style={{color:K.txt}}>{searchQ}</b></div>
+                    <div style={{fontSize:9, color:K.b, marginBottom:8}}>Fonte: OpenFoodFacts (database aperto)</div>
 
-                          {!searchEdit ? (
-                            <div>
-                              <div style={{display:"flex", justifyContent:"space-between", fontSize:13, marginBottom:4}}>
-                                <b>{it.name}</b>
-                                <span style={{fontWeight:700}}>{Math.round(it.kcal)} kcal</span>
-                              </div>
-                              {it.source && <div style={{fontSize:10, color:K.b, marginBottom:3}}>Fonte: {it.source}</div>}
-                              {it.per100 && (
-                                <div style={{fontSize:10, color:K.mut, marginBottom:3}}>
-                                  Per 100g: {it.per100.kcal} kcal | P{it.per100.protein}g | G{it.per100.fat}g | C{it.per100.carbs}g
-                                </div>
-                              )}
-                              {it.qty_desc && <div style={{fontSize:10, color:K.a, marginBottom:3}}>Calcolo: {it.qty_desc}</div>}
-                              <div style={{fontSize:11, color:K.txt}}>
-                                Totale {it.grams}g → P{Math.round(it.protein||0)}g | G{Math.round(it.fat||0)}g | C{Math.round(it.carbs||0)}g
-                              </div>
+                    {searchItems.map((it, i) => (
+                      <div key={i} style={{padding:"8px 0", borderBottom:"1px solid "+K.brd}}>
+
+                        {!searchEdit ? (
+                          <div>
+                            <div style={{fontSize:13, fontWeight:600, marginBottom:4}}>{it.name}</div>
+                            <div style={{fontSize:10, color:K.mut, marginBottom:4}}>
+                              Per 100g: {it.per100.kcal} kcal | P{it.per100.protein}g | G{it.per100.fat}g | C{it.per100.carbs}g
+                              {it.serving && <span> | Porzione: {it.serving}</span>}
                             </div>
-                          ) : (
-                            <div>
-                              <input style={{...ip, marginBottom:4, fontWeight:700}} value={it.name}
-                                onChange={e => { const c = [...searchItems]; c[i] = {...c[i], name:e.target.value}; setSearchItems(c); }} />
-                              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:4, marginBottom:4}}>
-                                <div>
-                                  <div style={{fontSize:9, color:K.mut}}>Grammi</div>
-                                  <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={it.grams || ""}
-                                    onChange={e => { const c = [...searchItems]; c[i] = {...c[i], grams:+e.target.value}; setSearchItems(c); }} />
-                                </div>
-                                <div>
-                                  <div style={{fontSize:9, color:K.mut}}>Kcal</div>
-                                  <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.kcal) || ""}
-                                    onChange={e => { const c = [...searchItems]; c[i] = {...c[i], kcal:+e.target.value}; setSearchItems(c); }} />
-                                </div>
-                                <div>
-                                  <div style={{fontSize:9, color:K.mut}}>Prot g</div>
-                                  <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.protein||0) || ""}
-                                    onChange={e => { const c = [...searchItems]; c[i] = {...c[i], protein:+e.target.value}; setSearchItems(c); }} />
-                                </div>
-                              </div>
-                              <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:4}}>
-                                <div>
-                                  <div style={{fontSize:9, color:K.mut}}>Grassi g</div>
-                                  <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.fat||0) || ""}
-                                    onChange={e => { const c = [...searchItems]; c[i] = {...c[i], fat:+e.target.value}; setSearchItems(c); }} />
-                                </div>
-                                <div>
-                                  <div style={{fontSize:9, color:K.mut}}>Carbo g</div>
-                                  <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.carbs||0) || ""}
-                                    onChange={e => { const c = [...searchItems]; c[i] = {...c[i], carbs:+e.target.value}; setSearchItems(c); }} />
-                                </div>
-                              </div>
-                              {it.source && <div style={{fontSize:9, color:K.b, marginTop:4}}>Fonte: {it.source}</div>}
+                            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
+                              <span style={{fontSize:11, color:K.mut}}>Quanto?</span>
+                              <input style={{...ip, width:80, padding:"5px 8px", fontSize:13, textAlign:"center"}} type="number"
+                                value={it.grams} onChange={e => updateSearchGrams(i, e.target.value)} />
+                              <span style={{fontSize:11, color:K.mut}}>g</span>
+                              <span style={{marginLeft:"auto", fontSize:14, fontWeight:700}}>{Math.round(it.kcal)} kcal</span>
                             </div>
-                          )}
-
-                        </div>
-                      ))}
-                      <div style={{display:"flex", gap:6, marginTop:10}}>
-                        <button style={bg} onClick={() => { setSearchEdit(false); confirmSearch(); }}>Conferma</button>
-                        <button style={{...bo, color:K.a, borderColor:"rgba(245,158,11,0.3)"}} onClick={() => setSearchEdit(!searchEdit)}>{searchEdit ? "Fine modifica" : "Modifica"}</button>
-                        <button style={bo} onClick={() => {setSearchOn(false); setSearchItems(null); setSearchQ(""); setSearchEdit(false);}}>Annulla</button>
+                            <div style={{fontSize:11, color:K.txt}}>
+                              P{Math.round(it.protein||0)}g | G{Math.round(it.fat||0)}g | C{Math.round(it.carbs||0)}g
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <input style={{...ip, marginBottom:4, fontWeight:700}} value={it.name}
+                              onChange={e => { const c = [...searchItems]; c[i] = {...c[i], name:e.target.value}; setSearchItems(c); }} />
+                            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:4, marginBottom:4}}>
+                              <div><div style={{fontSize:9, color:K.mut}}>Grammi</div>
+                                <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={it.grams || ""}
+                                  onChange={e => updateSearchGrams(i, e.target.value)} /></div>
+                              <div><div style={{fontSize:9, color:K.mut}}>Kcal</div>
+                                <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.kcal) || ""}
+                                  onChange={e => { const c = [...searchItems]; c[i] = {...c[i], kcal:+e.target.value}; setSearchItems(c); }} /></div>
+                              <div><div style={{fontSize:9, color:K.mut}}>Prot g</div>
+                                <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.protein||0) || ""}
+                                  onChange={e => { const c = [...searchItems]; c[i] = {...c[i], protein:+e.target.value}; setSearchItems(c); }} /></div>
+                            </div>
+                            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:4}}>
+                              <div><div style={{fontSize:9, color:K.mut}}>Grassi g</div>
+                                <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.fat||0) || ""}
+                                  onChange={e => { const c = [...searchItems]; c[i] = {...c[i], fat:+e.target.value}; setSearchItems(c); }} /></div>
+                              <div><div style={{fontSize:9, color:K.mut}}>Carbo g</div>
+                                <input style={{...ip, padding:"6px 8px", fontSize:12}} type="number" value={Math.round(it.carbs||0) || ""}
+                                  onChange={e => { const c = [...searchItems]; c[i] = {...c[i], carbs:+e.target.value}; setSearchItems(c); }} /></div>
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    ))}
+                    <div style={{display:"flex", gap:6, marginTop:10}}>
+                      <button style={bg} onClick={() => { setSearchEdit(false); confirmSearch(); }}>Conferma</button>
+                      <button style={{...bo, color:K.a, borderColor:"rgba(245,158,11,0.3)"}} onClick={() => setSearchEdit(!searchEdit)}>{searchEdit ? "Fine" : "Modifica"}</button>
+                      <button style={bo} onClick={() => {setSearchOn(false); setSearchItems(null); setSearchQ(""); setSearchEdit(false);}}>Annulla</button>
                     </div>
-                  ) : <div style={{color:K.mut, fontSize:12, padding:10}}>Non trovato. Prova con una descrizione diversa.</div>
+                  </div>
+                )}
                 )}
               </div>
             )}

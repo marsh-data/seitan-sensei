@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/anthropic", "destination": "/api/anthropic" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
